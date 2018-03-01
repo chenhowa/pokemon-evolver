@@ -269,6 +269,7 @@ class TrainerHandler(webapp2.RequestHandler):
         trainer.key.delete()
         http_codes.write_no_content(self)
         return
+
     def put(self, id=None):
         # There's nothing to put for /trainers/ or /trainers/:id/
         write_forbidden(self)
