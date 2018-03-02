@@ -106,11 +106,12 @@ def validate_token_and_id(self, id, id_token):
         # Reject the request
         httpcodes.write_bad_request(self)
         return False
-    if id_not_valid(self, id, id_token):
-        # If the id doesn't match the OpenId Connect Token info, or if 
-        # the token info is simply not valid accordiing to Google, reject the call.
-        httpcodes.write_forbidden(self)
-        return False
+    if id != "me":
+        if id_not_valid(self, id, id_token):
+            # If the id doesn't match the OpenId Connect Token info, or if 
+            # the token info is simply not valid accordiing to Google, reject the call.
+            httpcodes.write_forbidden(self)
+            return False
     return True
 
 def update(ndb_entity, data_dict, key):
@@ -143,6 +144,20 @@ class TrainerHandler(webapp2.RequestHandler):
     def get_trainer_by_token(id_token):
         return Trainer.get_by_id(id_token["sub"])
 
+    @staticmethod
+    def  prep_delete(trainer):
+        for poke_id in trainer.pokemon:
+            try:
+                pokemon = ndb.Key(urlsafe=poke_id).get()
+                PokemonHandler.prep_delete(pokemon)
+                pokemon.key.delete()
+            except:
+                # If trainer owns a pokemon that doesn't exist, get rid of that id and
+                # report a bad state error to client
+                trainer.pokemon = [p for p in trainer.pokemon if p != poke_id]
+                return False
+
+
     # This creates a trainer entity and an account entity 
     # associated with the trainer. This allows a trainer to
     # retrieve their entities with just an id token that is 
@@ -154,7 +169,6 @@ class TrainerHandler(webapp2.RequestHandler):
         new_trainer = Trainer(pokemon=[], steps_walked=0, total_evolves=0, highest_level=0,
                 id=id_token["sub"]) 
         trainer_key = new_trainer.put()
-
         return new_trainer
 
     def post(self, id=None):
@@ -265,9 +279,15 @@ class TrainerHandler(webapp2.RequestHandler):
             except:
                 http_codes.write_not_found(self)
                 return
-        # Once you have the key, use it to delete the trainer.
+        # Once you have the key, use it to delete all the trainer's pokemon AND 
+        # delete the trainer.
+        sucess_flag = TrainerHandler.prep_delete(trainer)
+        if success_flag == False:
+            httpcodes.write_conflict(self)
+            return
+
         trainer.key.delete()
-        http_codes.write_no_content(self)
+        httpcodes.write_no_content(self)
         return
 
     def put(self, id=None):
@@ -275,6 +295,135 @@ class TrainerHandler(webapp2.RequestHandler):
         write_forbidden(self)
         return
 
+class TrainerHandler2(webapp2.RequestHandler):
+    required_post_properties = ["name"]
+    post_properties = ["name"]
+
+    # patch_properties do not include friends, which are added 1 at a time
+    patch_properties = ["name", "level", "gender", "xp"]
+
+    def get(self, trainer_id=None, pokemon_id=None):
+        # First, validate everything related to the token
+        id_token = json.loads(self.request.headers["Authorization"])
+
+        if value_is_not_present(trainer_id):
+            httpcodes.write_bad_request(self)
+            return
+        if validate_token_and_id(self, trainer_id, id_token) == False:
+            return
+        
+        # Get the trainer before doing anything else
+        if trainer_id == "me":
+            trainer = TrainerHandler.get_trainer_by_token(id_token)
+            if not trainer:
+                httpcodes.write_not_found(self)
+                return
+        else:
+            try:
+                trainer = ndb.Key(urlsafe=trainer_id).get()
+            except:
+                httpcodes.write_not_found(self)
+                return
+
+        if value_is_not_present(pokemon_id):
+            # Then we just have the trainer id, and need to show his pokemon
+            pokemon_list = ndb.get_multi(map(lambda p_id: ndb.Key(urlsafe=p_id),
+                                            trainer.pokemon)) 
+            pokemon_list = map(lambda p: PokemonHandler.prep_pokemon_dict_for_owner(p.to_dict(), p.key.id), pokemon_list)
+
+            self.response.write(json.dumps(pokemon_list))
+            httpcodes.write_ok(self)
+        else:
+            # Then we have trainer and pokemon id, and need to show the specific pokemon
+            
+            # Verify that the pokemon in fact belongs to the trainer
+            if pokemon_id not in trainer.pokemon:
+                httpcodes.write_bad_request(self)
+                return
+
+            # If pokemon belongs to trainer, then send it to the trainer!
+            try:
+                pokemon = ndb.Key(urlsafe=pokemon_id).get()
+            except:
+                # Pokemon was somehow accidentally deleted! Let client know to try again
+                trainer.pokemon = [p for p in trainer.pokemon if p != pokemon_id]
+                httpcodes.write_conflict(self)
+                return
+            PokemonHandler.return_pokemon_to_owner_client(pokemon)
+            httpcodes.write_ok(self)
+        return
+
+class PokemonHandler(webapp2.RequestHandler):
+    @staticmethod
+    def get_all_pokemon():
+        return Pokemon.query().fetch()
+
+    @staticmethod
+    def prep_pokemon_dict_for_owner(dict, id):
+        dict['id'] = id
+        dict['url'] = '/pokemon/ + id'
+        return dict
+
+    @staticmethod
+    def prep_pokemon_dict_for_stranger(dict, id):
+        dict = PokemonHandler.prep_pokemon_dict_for_owner(dict, id)
+        del dict['friends']
+        del dict['current_owner']
+        return dict
+
+    @staticmethod
+    def return_pokemon_to_stranger_client(pokemon):
+        pokemon_id = pokemon.key.urlsafe()
+        pokemon_dict = pokemon.to_dict()
+        pokemon_dict = PokemonHandler.prep_pokemon_dict_for_stranger(pokemon_dict, pokemon_id)
+        self.response.write(json.dumps(pokemon_dict))
+
+    @staticmethod
+    def return_pokemon_to_owner_client(pokemon):
+        pokemon_id = pokemon.key.urlsafe()
+        pokemon_dict = pokemon.to_dict()
+        pokemon_dict = PokemonHandler.prep_pokemon_dict_for_owner(pokemon_dict, pokemon_id)
+        self.response.write(json.dumps(pokemon_dict))
+
+    def post(self, id=None):
+        # Pokemon cannot be created through this handler
+        # since users are not authenticated
+        httpcodes.write_forbidden(self)
+        return
+
+    def get(self, id=None):
+        if value_is_not_present(id):
+            # Query for all pokemon and return sanitized list to client
+            sanitized_list = map(lambda p: PokemonHandler.prep_pokemon_dict_for_stranger(
+                            p.to_dict(), p.key.urlsafe() ), PokemonHandler.get_all_pokemon() )
+            self.response.write(json.dumps(sanitized_list))
+            httpcodes.write_ok(self)
+            return
+        else:
+            try: 
+                pokemon = ndb.Key(urlsafe=id)
+            except:
+                # If pokemon was not found, inform client
+                httpcodes.write_not_found(self)
+                return
+            PokemonHandler.return_pokemon_to_stranger_client(pokemon)
+            httpcodes.write_ok(self)
+            return
+
+    def patch(self, id=None):
+        # No modifications to pokemon are allowed, since client is not 
+        # authenticated here.
+        httpcodes.write_forbidden(self)
+        return
+
+    def put(self, id=None):
+        httpcodes.write_forbidden(self)
+        return
+
+    def delete(self, id=None):
+        # An unauthenticated user is DEFINITELY NOT ALLOWED to do deletions
+        httpcodes.write_forbidden(self)
+        return
 
 class MainPage(webapp2.RequestHandler):
     def get(self):
