@@ -4,14 +4,14 @@
 # Howard Chen
 # This document runs a REST API backend for the Pokemon Evolver app.
 #
-# New user flow: The authenticated 
 
 
 from google.appengine.ext import ndb # import database functionality on GAE
 import webapp2 # import routing and request-handling framework
 import json # import python's methods for handling JSON strings and objects with dictionaries
 import httpcodes
-import time()
+import time
+import random
 from google.appengine.api import urlfetch
 
 
@@ -90,6 +90,7 @@ def token_not_valid(self, id_token):
 class Pokemon(ndb.Model):
     current_owner = ndb.StringProperty()
     name = ndb.StringProperty(required=True)
+    nickname = ndb.StringProperty()
     level = ndb.IntegerProperty()
     gender = ndb.StringProperty()
     xp = ndb.IntegerProperty()
@@ -125,7 +126,20 @@ def update(ndb_entity, data_dict, key):
     return ndb_entity
 
 class TrainerHandler(webapp2.RequestHandler):
-    patch_properties = ['steps_walked', 'total_evolves', 'highest_level', 'pokemon']
+    patch_properties = ['steps_walked', 'total_evolves', 'highest_level']
+
+    @staticmethod
+    def get_trainer(trainer_id, id_token):
+        if trainer_id == "me":
+            trainer = TrainerHandler.get_trainer_by_token(id_token)
+            if not trainer:
+                return None
+        else:
+            try:
+                trainer = ndb.Key(urlsafe=trainer_id).get()
+            except:
+                return None
+        return trainer
 
     @staticmethod
     def prep_trainer_dict(dict, id):
@@ -176,6 +190,7 @@ class TrainerHandler(webapp2.RequestHandler):
         # It doesn't make sense to allow them to
         # create their own account or anything
         write_method_not_allowed(self)
+        return
 
     def get(self, id=None):
         # First, validate everything related to the token
@@ -184,7 +199,7 @@ class TrainerHandler(webapp2.RequestHandler):
         # handles requests for trainer/account information
         if value_is_not_present(id):
             # Read-Access to all trainer accounts is not allowed
-            httpcodes.write_forbidden(self)
+            httpcodes.write_method_not_allowed(self)
             return
         if validate_token_and_id(self, id, id_token) == False:
             return
@@ -205,7 +220,7 @@ class TrainerHandler(webapp2.RequestHandler):
                 trainer = trainer_key.get()
             except:
                 #If trainer key cannot be obtained, reject the request
-                httpcodes.write_bad_request
+                httpcodes.write_bad_request(self)
                 return
         # Send back the trainer info
         TrainerHandler.return_trainer_to_client(trainer)
@@ -228,22 +243,14 @@ class TrainerHandler(webapp2.RequestHandler):
         properties = new_data.keys()
         for p in properties:
             if p not in TrainerHandler.patch_properties:
-                write_bad_request(self)
+                httpcodes.write_bad_request(self)
                 return
 
-        if id == "me":
-            trainer = TrainerHandler.get_trainer_by_token(id_token)
-            if not trainer: 
-                # If there's no trainer, we cannot perform patch
-                httpcodes.write_not_found(self)
-                return
-        else:
-            try:
-                trainer = ndb.Key(urlsafe=id).get()
-            except:
-                # If no trainer is found, tell client
-                httpcodes.write_not_found(self)
-                return
+        trainer = TrainerHandler.get_trainer(id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
+
         # Once trainer is found, patch its properties
         # using the request data, and then save its data.
         for p in properties:
@@ -266,19 +273,11 @@ class TrainerHandler(webapp2.RequestHandler):
         if validate_token_and_id(self, id, id_token) == False:
             return
 
+        trainer = TrainerHandler.get_trainer(id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
 
-        if id == "me":
-            trainer = TrainerHandler.get_trainer_by_token(id_token)
-            if not trainer:
-                # If there's no trainer, there was nothing to delete
-                http_codes.write_not_found(self)
-                return
-        else:
-            try:
-                trainer = ndb.Key(urlsafe=id).get()
-            except:
-                http_codes.write_not_found(self)
-                return
         # Once you have the key, use it to delete all the trainer's pokemon AND 
         # delete the trainer.
         sucess_flag = TrainerHandler.prep_delete(trainer)
@@ -296,11 +295,9 @@ class TrainerHandler(webapp2.RequestHandler):
         return
 
 class TrainerHandler2(webapp2.RequestHandler):
-    required_post_properties = ["name"]
-    post_properties = ["name"]
-
-    # patch_properties do not include friends, which are added 1 at a time
-    patch_properties = ["name", "level", "gender", "xp"]
+    required_post_properties = ['name']
+    post_properties = ['name']
+    patch_properties = ['nickname', 'gender', 'level', 'xp']
 
     def get(self, trainer_id=None, pokemon_id=None):
         # First, validate everything related to the token
@@ -313,17 +310,10 @@ class TrainerHandler2(webapp2.RequestHandler):
             return
         
         # Get the trainer before doing anything else
-        if trainer_id == "me":
-            trainer = TrainerHandler.get_trainer_by_token(id_token)
-            if not trainer:
-                httpcodes.write_not_found(self)
-                return
-        else:
-            try:
-                trainer = ndb.Key(urlsafe=trainer_id).get()
-            except:
-                httpcodes.write_not_found(self)
-                return
+        trainer = TrainerHandler.get_trainer(id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
 
         if value_is_not_present(pokemon_id):
             # Then we just have the trainer id, and need to show his pokemon
@@ -352,6 +342,137 @@ class TrainerHandler2(webapp2.RequestHandler):
             PokemonHandler.return_pokemon_to_owner_client(pokemon)
             httpcodes.write_ok(self)
         return
+
+    def put(self, trainer_id=None, pokemon_id=None)
+        httpcodes.write_method_not_allowed(self)
+        return
+
+    def post(self, trainer_id=None, pokemon_id=None):
+        # First, validate everything related to the token
+        id_token = json.loads(self.request.headers["Authorization"])
+        # handles requests for trainer/account information
+        if value_is_not_present(trainer_id):
+            httpcodes.write_forbidden(self)
+            return
+        if validate_token_and_id(self, id, id_token) == False:
+            return
+        if pokemon_id:
+            # Can't post to a pokemon itself.
+            httpcodes.method_not_allowed(self)
+            return
+
+        # Check that the properties for the post are all valid
+        new_data = json.loads(self.request.body)
+        properties = new_data.keys()
+        for p in properties:
+            if p not in TrainerHandler2.post_properties:
+                httpcodes.write_bad_request(self)
+                return
+        for required in TrainerHandler2.required_post_properties:
+            if required not in properties:
+                httpcodes.write_bad_request(self)
+                return
+
+        # Get the trainer and create a new pokemon for it
+        trainer = TrainerHandler.get_trainer(trainer_id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
+        male = 0
+        female = 1
+        gender_int = random.randint(male, female)
+        pokemon = Pokemon(current_owner=trainer.key.urlsafe(), name=properties["name"],
+                        nickname=properties["name"], level=0, xp=0, friends=[])
+        if gender_int == male:
+            pokemon.gender = "male"
+        else if gender_int == female:
+            pokemon.gender = "female"
+        pokemon_key = pokemon.put()
+        pokemon_id = pokemon_key.urlsafe()
+        trainer.pokemon.append(pokemon_id)
+        trainer.put()
+
+        # Return the newly created pokemon to the owner client
+        PokemonHandler.return_pokemon_to_owner_client(pokemon)
+        httpcodes.write_created(self)
+        return
+
+    def patch(self, trainer_id=None, pokemon_id=None):
+        # First, validate everything related to the token
+        id_token = json.loads(self.request.headers["Authorization"])
+
+        if value_is_not_present(trainer_id):
+            httpcodes.write_bad_request(self)
+            return
+        if validate_token_and_id(self, trainer_id, id_token) == False:
+            return
+        if value_is_not_present(pokemon_id):
+            # Not allowed to patch the entire list of a trainer's pokemon
+            httpcodes.write_forbiddent(self)
+            return
+
+        # Get the trainer before doing anything else
+        trainer = TrainerHandler.get_trainer(trainer_id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
+
+        # Get the patch data and check it is all valid
+        new_data = json.loads(self.request.body)
+        properties = new_data.keys()
+        for p in properties:
+            if p not in TrainerHandler2.patch_properties:
+                write_bad_request(self)
+                return
+
+        # If a specific pokemon is given to patch, then patch it
+        if pokemon_id not in Trainer.pokemon:
+            httpcodes.write_bad_request(self)
+            return
+        pokemon = ndb.Key(urlsafe=pokemon_id).get()
+
+        for p in properties:
+            pokemon = update(pokemon, new_data, p)
+        pokemon.put()
+
+        PokemonHandler.return_pokemon_to_owner_client(pokemon)
+        httpcodes.write_ok(self)
+        return
+
+
+    def delete(self, trainer_id=None, pokemon_id=None):
+        # First, validate everything related to the token
+        id_token = json.loads(self.request.headers["Authorization"])
+        if value_is_not_present(trainer_id):
+            httpcodes.write_bad_request(self)
+            return
+        if validate_token_and_id(self, trainer_id, id_token) == False:
+            return
+
+        # Get the trainer before doing anything else
+        trainer = TrainerHandler.get_trainer(trainer_id, id_token)
+        if not trainer:
+            httpcodes.write_not_found(self)
+            return
+
+        if value_is_not_present(pokemon_id):
+            # Then we just need to delete ALL the trainer's pokemon
+            for p_id in trainer.pokemon:
+                p_key = ndb.Key(urlsafe=p_id)
+                p_key.delete()
+            trainer.pokemon = []
+        else:
+            # Then we have a specific pokemon to delete
+            if pokemon_id not in Trainer.pokemon:
+                httpcodes.write_bad_request(self)
+                return
+            ndb.Key(urlsafe=pokemon_id).delete()
+            trainer.pokemon = [p for p in trainer.pokemon if p != pokemon_id]
+
+        trainer.put()
+        httpcodes.write_no_content(self)
+        return
+
 
 class PokemonHandler(webapp2.RequestHandler):
     @staticmethod
@@ -401,7 +522,7 @@ class PokemonHandler(webapp2.RequestHandler):
             return
         else:
             try: 
-                pokemon = ndb.Key(urlsafe=id)
+                pokemon = ndb.Key(urlsafe=id).get()
             except:
                 # If pokemon was not found, inform client
                 httpcodes.write_not_found(self)
