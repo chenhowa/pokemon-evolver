@@ -14,6 +14,8 @@ import time
 import random
 from google.appengine.api import urlfetch
 
+import jwt #to decode the id token string for use.
+
 
 
 # Set up cachine. For testing purposes. we set caching to be OFF.
@@ -32,6 +34,13 @@ def id_not_valid(self, id, id_token):
         return False
 
     return True
+
+# NOT SECURE but I don't have time to learn how to get the key
+# from the google certification discovery document!
+def get_decoded_id_token(self):
+    encoded = self.request.headers["Authorization"]
+    id_token = json.loads(jwt.decode(encoded, verify=False) )
+    return id_token
 
 def token_not_valid(self, id_token):
     valid_iss_strings = [
@@ -193,8 +202,7 @@ class TrainerHandler(webapp2.RequestHandler):
         return
 
     def get(self, id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
@@ -228,8 +236,7 @@ class TrainerHandler(webapp2.RequestHandler):
         return
 
     def patch(self, id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
@@ -262,8 +269,7 @@ class TrainerHandler(webapp2.RequestHandler):
         return
 
     def delete(self, id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
@@ -300,8 +306,7 @@ class TrainerHandler2(webapp2.RequestHandler):
     patch_properties = ['nickname', 'gender', 'level', 'xp']
 
     def get(self, trainer_id=None, pokemon_id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
 
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
@@ -348,8 +353,7 @@ class TrainerHandler2(webapp2.RequestHandler):
         return
 
     def post(self, trainer_id=None, pokemon_id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
         # handles requests for trainer/account information
         if value_is_not_present(trainer_id):
             httpcodes.write_forbidden(self)
@@ -398,8 +402,7 @@ class TrainerHandler2(webapp2.RequestHandler):
         return
 
     def patch(self, trainer_id=None, pokemon_id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
 
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
@@ -441,8 +444,7 @@ class TrainerHandler2(webapp2.RequestHandler):
 
 
     def delete(self, trainer_id=None, pokemon_id=None):
-        # First, validate everything related to the token
-        id_token = json.loads(self.request.headers["Authorization"])
+        id_token = get_decoded_id_token(self)
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
             return
@@ -560,10 +562,10 @@ app = webapp2.WSGIApplication([
     ('/', MainPage),
     ('/trainers/(.*)/pokemon/', TrainerHandler2),
     ('/trainers/(.*)/pokemon/(.*)', TrainerHandler2),
-    ('/trainers/', TrainerHandler),
+    ('/trainers(/?)', TrainerHandler),
     ('/trainers/(.*)', TrainerHandler),
 
-    ('/pokemon/', PokemonHandler),
+    ('/pokemon(/?)', PokemonHandler),
     ('/pokemon/(.*)', PokemonHandler)
 ], debug=True)
 
