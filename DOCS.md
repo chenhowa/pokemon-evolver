@@ -12,21 +12,38 @@
 #### POST, GET, PATCH, DELETE, PUT  /trainers/
 * These methods are 403 Forbidden for the client. Clients do not have sufficient authority to do anything to the list of trainers directly.
 
-## Getting, Updating, and Deleting a Specific Trainer
+## Creating/Getting, Updating, and Deleting a Specific Trainer
 #### GET /trainers/:id
+This will get the trainer's account, or create it if it does not exist.
+
 * If token is not valid, return 400 Bad Request
-* If token does not match id, return 403 Forbidden
+* If :id != "me" and token does not match :id, return 403 Forbidden
 * If :id == "me"
     * If Trainer account exists, return it with 200 OK
     * If Trainer account does not exist, create it and return it with 200 OK.
 * If :id != "me"
-    * Get the associated Trainer account and return it with 200 OK.
+    * Get the associated Trainer account and return it with 200 OK, according to the following scheme:
+
+```
+{
+    'pokemon': /* string[]; list of pokemon ids */,
+    'steps_walked': /* int; number of steps walked */,
+    'total_evolves': /* int; how many times the trainer has evolved pokemon */,
+    'highest_level': /* int; the highest level pokemon a trainer has ever had */,
+    'id': 'aabbc123' /* string; the trainer's particular id */
+    'url': '/trainers/aabbc123' /* url to get trainer again if necessary */
+    
+}
+```
+If :id (not "me") does not refer to a valid trainer account despite matching the valid token, return 400 Bad Request.
 
 #### PATCH /trainers/:id
+This will update a trainer's account if it exists.
+
 * If token is not valid, return 400 Bad Request.
-* If token does not match id, return 403 Forbidden
-* If :id does not refer to an existing trainer, return 404 Not Found
-* If :id refers to a valid trainer, patch its properties accordiing to the following scheme, and the patched Trainer is returned with 200 OK:
+* If token does not match (a not "me") :id, return 403 Forbidden
+* If :id does not refer to an existing trainer, return 404 Not Found. The account should've been obtained first with a call to GET /trainers/:id
+* If :id refers to a valid trainer, patch its properties according to the following scheme, and the patched Trainer is returned with 200 OK:
 
 ```
 {
@@ -35,8 +52,11 @@
     'highest_level': <optional integer>
 }
 ```
+See GET /trainers/:id for scheme of the returned Trainer.
 
 #### DELETE /trainers/:id
+This will delete a trainer's account if it exists.
+
 * If token is not valid, return 400 Bad Request.
 * If token does not match id, return 403 Forbidden
 * If :id does not refer to an existing trainer, return 404 Not Found
@@ -44,11 +64,15 @@
 
 ## Getting, Deleting, and Adding to a Trainer's List of Pokemon
 #### GET /trainers/:trainer_id/pokemon
+This gets a list of a trainer's pokemon, if the trainer exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
 * If :trainer_id refers to a valid trainer, the entire list of the trainer's pokemon will be returned with 200 OK.
 #### POST /trainers/:trainer_id/pokemon
+This adds a pokemon to a trainer's list of pokemon, if the trainer exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
@@ -60,6 +84,8 @@
 }
 ```
 ### DELETE /trainers/:trainer_id/pokemon
+This deletes all the pokemon from a trainer's list of pokemon, if the trainer exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
@@ -67,6 +93,8 @@
 
 ## Getting, Updating, and Deleting a Trainer's Specific Pokemon
 #### GET /trainers/:trainer_id/pokemon/:pokemon_id
+This gets a specific pokemon from a trainer, if the trainer exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
@@ -74,6 +102,8 @@
     * If :pokemon_id does not refer to one of the trainer's pokemon, return 400 Bad Request.
     * If :pokemon_id refers to one of the trainer's pokemon, return the pokemon with 200 OK.
 #### PATCH /trainers/:trainer_id/pokemon/:pokemon_id
+This updates a specific pokemon of a trainer, if the trainer exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
@@ -90,6 +120,8 @@
 }
 ```
 ### DELETE /trainers/:trainer_id/pokemon/:pokemon_id
+This deletes a specific pokemon from a trainer and the server, if the traiiner exists.
+
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.
 * If :trainer_id does not refer to an existing trainer, return 404 Not Found
@@ -99,11 +131,15 @@
 
 ## Getting the List of All Pokemon
 #### GET /pokemon
+This gets a sanitized list of all pokemon on the server.
+
 * Client does not have to be authenticated
 * Returns a list of all pokemon in the server, but without any references to a pokemon's friends or a pokemon's current owner, with 200 OK. 
 
 ## Getting a Specific Pokemon
 #### GET /pokemon/:id
+This gets a specific pokemon from the server, but sanitized for confidentiality of its owner.
+
 * Client does not have to be authenticated.
 * If :id does not refer to an existing pokemon, return 404 Not Found
 * If : id refers to an existing pokemon, return the pokemon, but without any reference to its friends or its current owner, with 200 OK.

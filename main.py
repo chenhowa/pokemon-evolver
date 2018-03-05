@@ -75,7 +75,7 @@ def token_not_valid(self, id_token):
                 headers=headers)
         if result.status_code == 200:
             # We should have the discovery document. Attempt to verify the token
-
+            print("Simulate verification of signature")
 
             # TO IMPLEMENT: ID TOKEN SIGNATURE VALIDATION
 
