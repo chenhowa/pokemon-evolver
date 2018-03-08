@@ -30,18 +30,23 @@ def value_is_not_present(val):
 
 def id_not_valid(self, id, id_token):
     # if the id doesn't match the token identifier, the id isn't valid
+    print("SOURCE OF ERROR")
+    print(id_token["sub"])
+    print(ndb.Key(urlsafe=id).id())
     if id_token["sub"] != ndb.Key(urlsafe=id).id():
-        return False
+        return True
 
-    return True
+    return False
 
 # NOT SECURE but I don't have time to learn how to get the key
 # from the google certification discovery document!
 def get_decoded_id_token(self):
     encoded = self.request.headers["Authorization"]
-    id_token = json.loads(jwt.decode(encoded, verify=False) )
+    print("ID TOKEN")
+    id_token = jwt.decode(encoded, verify=False)
     return id_token
 
+# Checks whether a token is NOT valid
 def token_not_valid(self, id_token):
     valid_iss_strings = [
         "https://accounts.google.com",
@@ -53,16 +58,19 @@ def token_not_valid(self, id_token):
             iss_is_valid = True
             break
     if not iss_is_valid:
-        return False
+        print("iss invalid")
+        return True
 
     client_id = "130768413785-a9c800iouko8953344gvaf4oqq3jeket.apps.googleusercontent.com"
     if id_token["aud"] != client_id:
-        return False
+        print("aud invalid")
+        return True
 
     # https://stackoverflow.com/questions/16755394/what-is-the-easiest-way-to-get-current-gmt-time-in-unix-timestamp-format
     # discusses how to get UNIX time in Python
-    if id_token["exp"] >= time.time():
-        return False
+    if id_token["exp"] <= time.time():
+        print("token expired")
+        return True
 
     # Finally, fetch AND CACHE the discovery document and use it 
     # to verify that the token is signed correctly
@@ -86,12 +94,12 @@ def token_not_valid(self, id_token):
 
             # Return false because we could not verify the token
             self.response.write("FAILED to retrieve discovery for some reason!");
-            return False
+            return True
     except urlfetch.Error:
         logging.exception('Caught an exception fetching discovery url')
-        return False
+        return True
 
-    return True
+    return False
 
 # This function will udate a given ndb entity 
 # using the key-specified value of the dictionary.
@@ -114,9 +122,13 @@ class Trainer(ndb.Model):
 def validate_token_and_id(self, id, id_token):
     if token_not_valid(self, id_token):
         # Reject the request
+        print("token invalid")
+        self.response.write("bad token")
         httpcodes.write_bad_request(self)
         return False
     if id != "me":
+        print("THE TRAINER ID IS")
+        print(id)
         if id_not_valid(self, id, id_token):
             # If the id doesn't match the OpenId Connect Token info, or if 
             # the token info is simply not valid accordiing to Google, reject the call.
@@ -157,7 +169,7 @@ class TrainerHandler(webapp2.RequestHandler):
         return dict
 
     @staticmethod
-    def return_trainer_to_client(trainer)
+    def return_trainer_to_client(self, trainer):
         trainer_id = trainer.key.urlsafe()
         trainer_dict = trainer.to_dict()
         trainer_dict = TrainerHandler.prep_trainer_dict(trainer_dict, trainer_id)
@@ -202,7 +214,11 @@ class TrainerHandler(webapp2.RequestHandler):
         return
 
     def get(self, id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
@@ -210,6 +226,7 @@ class TrainerHandler(webapp2.RequestHandler):
             httpcodes.write_method_not_allowed(self)
             return
         if validate_token_and_id(self, id, id_token) == False:
+            print("NOT VALID")
             return
 
         # The id is valid, and we can use it.
@@ -231,19 +248,26 @@ class TrainerHandler(webapp2.RequestHandler):
                 httpcodes.write_bad_request(self)
                 return
         # Send back the trainer info
-        TrainerHandler.return_trainer_to_client(trainer)
+        print(trainer)
+        TrainerHandler.return_trainer_to_client(self, trainer)
         httpcodes.write_ok(self)
         return
 
     def patch(self, id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
             # Read-Access to all trainer accounts is not allowed
+            print("NOT PRESENT")
             httpcodes.write_forbidden(self)
             return
         if validate_token_and_id(self, id, id_token) == False:
+            print("INVALID")
             return
         # Check that the properties to patch are all valid
         new_data = json.loads(self.request.body)
@@ -264,12 +288,16 @@ class TrainerHandler(webapp2.RequestHandler):
             trainer = update(trainer, new_data, p)
         trainer.put()
 
-        TrainerHandler.return_trainer_to_client(trainer)
+        TrainerHandler.return_trainer_to_client(self, trainer)
         httpcodes.write_ok(self)
         return
 
     def delete(self, id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
 
         # handles requests for trainer/account information
         if value_is_not_present(id):
@@ -306,7 +334,12 @@ class TrainerHandler2(webapp2.RequestHandler):
     patch_properties = ['nickname', 'gender', 'level', 'xp']
 
     def get(self, trainer_id=None, pokemon_id=None):
-        id_token = get_decoded_id_token(self)
+        print ("TRAINER HANDLER 2")
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
 
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
@@ -315,16 +348,18 @@ class TrainerHandler2(webapp2.RequestHandler):
             return
         
         # Get the trainer before doing anything else
-        trainer = TrainerHandler.get_trainer(id, id_token)
+        trainer = TrainerHandler.get_trainer(trainer_id, id_token)
         if not trainer:
+            print("TRAINER NOT FOUND")
             httpcodes.write_not_found(self)
             return
 
         if value_is_not_present(pokemon_id):
+            print("GETTING POKEMON")
             # Then we just have the trainer id, and need to show his pokemon
             pokemon_list = ndb.get_multi(map(lambda p_id: ndb.Key(urlsafe=p_id),
                                             trainer.pokemon)) 
-            pokemon_list = map(lambda p: PokemonHandler.prep_pokemon_dict_for_owner(p.to_dict(), p.key.id), pokemon_list)
+            pokemon_list = map(lambda p: PokemonHandler.prep_pokemon_dict_for_owner(p.to_dict(), p.key.urlsafe()), pokemon_list)
 
             self.response.write(json.dumps(pokemon_list))
             httpcodes.write_ok(self)
@@ -344,21 +379,27 @@ class TrainerHandler2(webapp2.RequestHandler):
                 trainer.pokemon = [p for p in trainer.pokemon if p != pokemon_id]
                 httpcodes.write_conflict(self)
                 return
-            PokemonHandler.return_pokemon_to_owner_client(pokemon)
+            PokemonHandler.return_pokemon_to_owner_client(self, pokemon)
             httpcodes.write_ok(self)
         return
 
-    def put(self, trainer_id=None, pokemon_id=None)
+    def put(self, trainer_id=None, pokemon_id=None):
         httpcodes.write_method_not_allowed(self)
         return
 
     def post(self, trainer_id=None, pokemon_id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            print("exception in getting token")
+            httpcodes.write_bad_request(self)
+            return
         # handles requests for trainer/account information
         if value_is_not_present(trainer_id):
             httpcodes.write_forbidden(self)
             return
-        if validate_token_and_id(self, id, id_token) == False:
+        if validate_token_and_id(self, trainer_id, id_token) == False:
+            print("Exception in validating token")
             return
         if pokemon_id:
             # Can't post to a pokemon itself.
@@ -370,26 +411,31 @@ class TrainerHandler2(webapp2.RequestHandler):
         properties = new_data.keys()
         for p in properties:
             if p not in TrainerHandler2.post_properties:
+                print("bad property")
                 httpcodes.write_bad_request(self)
                 return
         for required in TrainerHandler2.required_post_properties:
             if required not in properties:
+                print("bad required property")
                 httpcodes.write_bad_request(self)
                 return
 
         # Get the trainer and create a new pokemon for it
         trainer = TrainerHandler.get_trainer(trainer_id, id_token)
+        print("TRAINER?")
+        print(trainer)
+        print(trainer.pokemon)
         if not trainer:
             httpcodes.write_not_found(self)
             return
         male = 0
         female = 1
         gender_int = random.randint(male, female)
-        pokemon = Pokemon(current_owner=trainer.key.urlsafe(), name=properties["name"],
-                        nickname=properties["name"], level=0, xp=0, friends=[])
+        pokemon = Pokemon(current_owner=trainer.key.urlsafe(), name=new_data["name"],
+                        nickname=new_data["name"], level=0, xp=0, friends=[])
         if gender_int == male:
             pokemon.gender = "male"
-        else if gender_int == female:
+        elif gender_int == female:
             pokemon.gender = "female"
         pokemon_key = pokemon.put()
         pokemon_id = pokemon_key.urlsafe()
@@ -397,12 +443,16 @@ class TrainerHandler2(webapp2.RequestHandler):
         trainer.put()
 
         # Return the newly created pokemon to the owner client
-        PokemonHandler.return_pokemon_to_owner_client(pokemon)
+        PokemonHandler.return_pokemon_to_owner_client(self, pokemon)
         httpcodes.write_created(self)
         return
 
     def patch(self, trainer_id=None, pokemon_id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
 
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
@@ -425,11 +475,13 @@ class TrainerHandler2(webapp2.RequestHandler):
         properties = new_data.keys()
         for p in properties:
             if p not in TrainerHandler2.patch_properties:
+                print("PROPERTY NOT FOUND")
                 write_bad_request(self)
                 return
 
         # If a specific pokemon is given to patch, then patch it
-        if pokemon_id not in Trainer.pokemon:
+        if pokemon_id not in trainer.pokemon:
+            print("POKEMON NOT FOUND")
             httpcodes.write_bad_request(self)
             return
         pokemon = ndb.Key(urlsafe=pokemon_id).get()
@@ -438,13 +490,17 @@ class TrainerHandler2(webapp2.RequestHandler):
             pokemon = update(pokemon, new_data, p)
         pokemon.put()
 
-        PokemonHandler.return_pokemon_to_owner_client(pokemon)
+        PokemonHandler.return_pokemon_to_owner_client(self, pokemon)
         httpcodes.write_ok(self)
         return
 
 
     def delete(self, trainer_id=None, pokemon_id=None):
-        id_token = get_decoded_id_token(self)
+        try:
+            id_token = get_decoded_id_token(self)
+        except:
+            httpcodes.write_bad_request(self)
+            return
         if value_is_not_present(trainer_id):
             httpcodes.write_bad_request(self)
             return
@@ -465,7 +521,7 @@ class TrainerHandler2(webapp2.RequestHandler):
             trainer.pokemon = []
         else:
             # Then we have a specific pokemon to delete
-            if pokemon_id not in Trainer.pokemon:
+            if pokemon_id not in trainer.pokemon:
                 httpcodes.write_bad_request(self)
                 return
             ndb.Key(urlsafe=pokemon_id).delete()
@@ -484,7 +540,7 @@ class PokemonHandler(webapp2.RequestHandler):
     @staticmethod
     def prep_pokemon_dict_for_owner(dict, id):
         dict['id'] = id
-        dict['url'] = '/pokemon/ + id'
+        dict['url'] = '/pokemon/' + id
         return dict
 
     @staticmethod
@@ -495,14 +551,14 @@ class PokemonHandler(webapp2.RequestHandler):
         return dict
 
     @staticmethod
-    def return_pokemon_to_stranger_client(pokemon):
+    def return_pokemon_to_stranger_client(self, pokemon):
         pokemon_id = pokemon.key.urlsafe()
         pokemon_dict = pokemon.to_dict()
         pokemon_dict = PokemonHandler.prep_pokemon_dict_for_stranger(pokemon_dict, pokemon_id)
         self.response.write(json.dumps(pokemon_dict))
 
     @staticmethod
-    def return_pokemon_to_owner_client(pokemon):
+    def return_pokemon_to_owner_client(self, pokemon):
         pokemon_id = pokemon.key.urlsafe()
         pokemon_dict = pokemon.to_dict()
         pokemon_dict = PokemonHandler.prep_pokemon_dict_for_owner(pokemon_dict, pokemon_id)
@@ -529,7 +585,7 @@ class PokemonHandler(webapp2.RequestHandler):
                 # If pokemon was not found, inform client
                 httpcodes.write_not_found(self)
                 return
-            PokemonHandler.return_pokemon_to_stranger_client(pokemon)
+            PokemonHandler.return_pokemon_to_stranger_client(self, pokemon)
             httpcodes.write_ok(self)
             return
 
@@ -560,7 +616,7 @@ webapp2.WSGIApplication.allowed_methods = new_allowed_methods
 
 app = webapp2.WSGIApplication([
     ('/', MainPage),
-    ('/trainers/(.*)/pokemon/', TrainerHandler2),
+    ('/trainers/(.*)/pokemon(/?)', TrainerHandler2),
     ('/trainers/(.*)/pokemon/(.*)', TrainerHandler2),
     ('/trainers(/?)', TrainerHandler),
     ('/trainers/(.*)', TrainerHandler),

@@ -83,7 +83,7 @@ This adds a pokemon to a trainer's list of pokemon, if the trainer exists.
     "name": <required string>
 }
 ```
-### DELETE /trainers/:trainer_id/pokemon
+#### DELETE /trainers/:trainer_id/pokemon
 This deletes all the pokemon from a trainer's list of pokemon, if the trainer exists.
 
 * If token is not valid, return 400 Bad Request
