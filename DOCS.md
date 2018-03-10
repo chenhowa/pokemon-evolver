@@ -7,6 +7,28 @@
     * This method is slower than using the trainer id directly.
 * In POST, PATCH, and PUT methods, only use properties that are listed in the accompanying scheme in the documentation. Using any other properties in the request body will result in returning 400 Bad Request.
 
+## Entities in this API
+This section documents the Entities that exist in the backend database, and their important properties.
+
+#### Trainer
+Each trainer has 5 important properties:
+
+* pokemon: list of the pokemon the trainer 'owns'.
+* steps_walked: count of how many steps a trainer has walked.
+* total_evolves: count of how many times a trainer has chosen to evolve a pokemon.
+* highest_level: number representing the highest level pokemon a trainer has ever owned.
+* region: the name of the trainer's current region in the Pokemon world.
+
+#### Pokemon
+Each pokemon has 7 important properties:
+
+* current_owner: reference to its trainer
+* name: name of the pokemon's species.
+* nickname: name the trainer uses for the pokemon.
+* level: number representing the pokemon's current level.
+* xp: number representing the pokemon's experience within its current level.
+* friends: list of pokemon that are 'friends' with this pokemon.
+* gender: gender of the pokemon.
 
 ## Viewing and Modifying the List of Trainers
 #### POST, GET, PATCH, DELETE, PUT  /trainers/
@@ -32,6 +54,7 @@ This will get the trainer's account, or create it if it does not exist.
     'highest_level': /* int; the highest level pokemon a trainer has ever had */,
     'id': 'aabbc123' /* string; the trainer's particular id */
     'url': '/trainers/aabbc123' /* url to get trainer again if necessary */
+    'region': /* string; name of trainer's region */
     
 }
 ```
@@ -50,6 +73,7 @@ This will update a trainer's account if it exists.
     'steps_walked': <optional integer>
     'total_evolves': <optional integer>
     'highest_level': <optional integer>
+    'region': <optional string>
 }
 ```
 See GET /trainers/:id for scheme of the returned Trainer.
@@ -120,7 +144,7 @@ This updates a specific pokemon of a trainer, if the trainer exists.
 }
 ```
 ### DELETE /trainers/:trainer_id/pokemon/:pokemon_id
-This deletes a specific pokemon from a trainer and the server, if the traiiner exists.
+This deletes a specific pokemon from a trainer and the server, if the trainer exists.
 
 * If token is not valid, return 400 Bad Request
 * If token does not match trainer_id, return 403 Forbidden.

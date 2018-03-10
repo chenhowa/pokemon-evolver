@@ -114,6 +114,7 @@ class Pokemon(ndb.Model):
     friends = ndb.JsonProperty(repeated=True) # List of secret:url pairs for viewing friend pokemon stats.
 
 class Trainer(ndb.Model):
+    region = ndb.StringProperty()
     pokemon = ndb.StringProperty(repeated=True) # List of pokemon ids.
     steps_walked = ndb.IntegerProperty()
     total_evolves = ndb.IntegerProperty()
@@ -147,7 +148,7 @@ def update(ndb_entity, data_dict, key):
     return ndb_entity
 
 class TrainerHandler(webapp2.RequestHandler):
-    patch_properties = ['steps_walked', 'total_evolves', 'highest_level']
+    patch_properties = ['steps_walked', 'total_evolves', 'highest_level', 'region']
 
     @staticmethod
     def get_trainer(trainer_id, id_token):
@@ -202,7 +203,7 @@ class TrainerHandler(webapp2.RequestHandler):
         # This may not be safe, but it's faster to just use the unique Google identifier
         # as the key for the new trainer. Fewer calls to the Datastore are required.
         new_trainer = Trainer(pokemon=[], steps_walked=0, total_evolves=0, highest_level=0,
-                id=id_token["sub"]) 
+                region="Kanto", id=id_token["sub"]) 
         trainer_key = new_trainer.put()
         return new_trainer
 
