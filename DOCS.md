@@ -143,7 +143,7 @@ This updates a specific pokemon of a trainer, if the trainer exists.
     'xp': <optional int>
 }
 ```
-### DELETE /trainers/:trainer_id/pokemon/:pokemon_id
+#### DELETE /trainers/:trainer_id/pokemon/:pokemon_id
 This deletes a specific pokemon from a trainer and the server, if the trainer exists.
 
 * If token is not valid, return 400 Bad Request
@@ -153,7 +153,10 @@ This deletes a specific pokemon from a trainer and the server, if the trainer ex
     * If :pokemon_id does not refer to one of the trainer's pokemon, return 400 Bad Request.
     * If :pokemon_id refers to one of the trainer's pokemon, the server will delete that specific pokemon and return 204 No Content
 
+# The following are implemented in the source code, but there wasn't time to test them in Postman or use them in the mobile frontend. Please disregard these for grading purposes.
+
 ## Getting the List of All Pokemon
+
 #### GET /pokemon
 This gets a sanitized list of all pokemon on the server.
 
