@@ -315,7 +315,7 @@ class TrainerHandler(webapp2.RequestHandler):
 
         # Once you have the key, use it to delete all the trainer's pokemon AND 
         # delete the trainer.
-        sucess_flag = TrainerHandler.prep_delete(trainer)
+        success_flag = TrainerHandler.prep_delete(trainer)
         if success_flag == False:
             httpcodes.write_conflict(self)
             return
@@ -534,6 +534,13 @@ class TrainerHandler2(webapp2.RequestHandler):
 
 
 class PokemonHandler(webapp2.RequestHandler):
+    @staticmethod
+    def prep_delete(pokemon):
+        # currently this function does nothing.
+        # Maybe it could clean up some of the pokemon's other
+        # relationships, if it ever has any.
+        return True
+
     @staticmethod
     def get_all_pokemon():
         return Pokemon.query().fetch()
